@@ -42,28 +42,33 @@ public class SearchController {
     @GetMapping("/popular")
     public ResponseEntity<Map<String, Object>> getPopularKeywords() {
         List<String> popularKeywords = searchService.getPopularKeywords(10);
-        Map<String, Object> redisStatus = searchService.getRedisStatus();
+        Map<String, Object> status = searchService.getPopularStatus();  // Redis 2번만 호출
 
         return ResponseEntity.ok(Map.of(
                 "keywords", popularKeywords,
                 "redisKey", "popular_keywords",
-                "redisValue", redisStatus.get("popularKeywords"),
-                "totalCount", redisStatus.get("totalPopularCount")
+                "redisValue", status.get("popularKeywords"),
+                "totalCount", status.get("totalPopularCount")
         ));
     }
+
 
     @GetMapping("/recent")
     public ResponseEntity<Map<String, Object>> getRecentKeywords() {
         List<String> recentKeywords = searchService.getRecentKeywords(10);
-        Map<String, Object> redisStatus = searchService.getRedisStatus();
+        Map<String, Object> status = searchService.getRecentStatus();  // Redis 2번만 호출
 
         return ResponseEntity.ok(Map.of(
                 "keywords", recentKeywords,
                 "redisKey", "recent_keywords",
-                "redisValue", redisStatus.get("recentKeywords"),
-                "totalCount", redisStatus.get("totalRecentCount")
+                "redisValue", status.get("recentKeywords"),
+                "totalCount", status.get("totalRecentCount")
         ));
     }
+
+
+
+
 
     @GetMapping("/debug/redis-status")
     public ResponseEntity<Map<String, Object>> getRedisStatus() {

@@ -165,17 +165,7 @@ public class SearchService {
         stringRedisTemplate.opsForList().trim(RECENT_KEYWORDS_KEY, 0, 9);
     }
 
-    @Cacheable(value = "search", key = "'popular_keywords'")
-    public List<String> getPopularKeywords(int limit) {
-        try {
-            Set<String> keywords = stringRedisTemplate.opsForZSet().reverseRange(POPULAR_KEYWORDS_KEY, 0, limit - 1);
-            if (keywords == null) return List.of();
-            return new ArrayList<>(keywords);
-        } catch (RuntimeException ex) {
-            safePurgeCorrupted();
-            return List.of();
-        }
-    }
+
 
     @Cacheable(value = "search", key = "'recent_keywords'")
     public List<String> getRecentKeywords(int limit) {
@@ -188,10 +178,15 @@ public class SearchService {
             return List.of();
         }
     }
+    @Cacheable(value = "search", key = "'popular_keywords'")
+    public List<String> getPopularKeywords(int limit) {
+        return getPopularKeywordsRaw(limit);  // 재사용
+    }
 
     public List<String> getPopularKeywordsRaw(int limit) {
         try {
-            Set<String> keywords = stringRedisTemplate.opsForZSet().reverseRange(POPULAR_KEYWORDS_KEY, 0, limit - 1);
+            Set<String> keywords = stringRedisTemplate.opsForZSet()
+                    .reverseRange(POPULAR_KEYWORDS_KEY, 0, limit - 1);
             if (keywords == null) return List.of();
             return new ArrayList<>(keywords);
         } catch (RuntimeException ex) {
@@ -199,6 +194,33 @@ public class SearchService {
             return List.of();
         }
     }
+
+    // popular 데이터만 조회 (Redis 2번 호출)
+    public Map<String, Object> getPopularStatus() {
+        ZSetOperations<String, String> zops = stringRedisTemplate.opsForZSet();
+        Set<ZSetOperations.TypedTuple<String>> popularWithScores =
+                zops.reverseRangeWithScores(POPULAR_KEYWORDS_KEY, 0, -1);
+        Long popularCount = zops.zCard(POPULAR_KEYWORDS_KEY);
+        return Map.of(
+                "popularKeywords", popularWithScores != null ? popularWithScores : Set.of(),
+                "totalPopularCount", popularCount != null ? popularCount : 0L
+        );
+    }
+
+    // recent 데이터만 조회 (Redis 2번 호출)
+    public Map<String, Object> getRecentStatus() {
+        List<String> recentKeywords = stringRedisTemplate.opsForList()
+                .range(RECENT_KEYWORDS_KEY, 0, -1);
+        Long recentCount = stringRedisTemplate.opsForList().size(RECENT_KEYWORDS_KEY);
+        return Map.of(
+                "recentKeywords", recentKeywords != null ? recentKeywords : List.of(),
+                "totalRecentCount", recentCount != null ? recentCount : 0L
+        );
+    }
+
+
+
+
 
     public List<String> getRecentKeywordsRaw(int limit) {
         try {

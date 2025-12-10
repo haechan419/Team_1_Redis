@@ -75,53 +75,61 @@ function addUserSearchKeyword(keyword) {
   if (items.length > 15) items[items.length - 1].remove();
 }
 
-async function updatePopularKeywords() {
-  try {
-    const r = await fetchWithTimeout("/api/search/popular");
-    if (r.ok) {
-      const data = await r.json();
-
-      // Redis Key:Value 정보를 콘솔에 출력
-      console.group("📊 인기 검색어 Redis 데이터");
-      console.log(`Key: ${data.redisKey}`);
-      console.log("Value:", data.redisValue);
-      console.log("총 개수:", data.totalCount);
-      console.groupEnd();
-
-      displayKeywords("popularKeywords", Array.isArray(data.keywords) ? data.keywords : []);
+function logRedisData(title, data) {
+    console.group(title);
+    console.log(`Key: ${data.redisKey}`);
+    console.log("Value:", data.redisValue);
+    if (data.totalCount !== undefined) {
+        console.log("총 개수:", data.totalCount);
     }
-  } catch {}
+    console.groupEnd();
 }
+
+async function fetchAndDisplayPopular(logTitle = "📊 인기 검색어") {
+    const response = await fetchWithTimeout("/api/search/popular");
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    logRedisData(logTitle, data); // 반복적인 console.log 부분을 여기서 호출
+    displayKeywords("popularKeywords", Array.isArray(data.keywords) ? data.keywords : []);
+    return true;
+}
+
+async function fetchAndDisplayRecent(logTitle = "📝 최근 검색어") {
+    const response = await fetchWithTimeout("/api/search/recent");
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    logRedisData(logTitle, data); // 반복적인 console.log 부분을 여기서 호출
+    displayKeywords("recentKeywords", Array.isArray(data.keywords) ? data.keywords : []);
+    return true;
+}
+
+
+
+async function updatePopularKeywords() {
+    try {
+        await fetchAndDisplayPopular("📊 인기 검색어 Redis 데이터");
+        // 반복적인 console.log 부분 빼기
+    } catch (error) {
+        console.error("인기 검색어 업데이트 실패:", error); // 비어있던 catch 문 채워넣기
+    }
+}
+
 
 async function loadKeywords() {
-  try {
-    const [p, r] = await Promise.all([
-      fetchWithTimeout("/api/search/popular"),
-      fetchWithTimeout("/api/search/recent"),
-    ]);
-
-    if (p.ok) {
-      const popularData = await p.json();
-      console.group("🔥 초기 로딩 - 인기 검색어 Redis");
-      console.log(`Key: ${popularData.redisKey}`);
-      console.log("Value:", popularData.redisValue);
-      console.groupEnd();
-      displayKeywords("popularKeywords", Array.isArray(popularData.keywords) ? popularData.keywords : []);
+    try {
+        await Promise.all([
+            fetchAndDisplayPopular("🔥 초기 로딩 - 인기 검색어"), // 인기검색어 (함수호출)
+            fetchAndDisplayRecent("📝 초기 로딩 - 최근 검색어") // 최근 검색어(함수호출)
+        ]);
+    } catch (error) {
+        console.error("키워드 로딩 실패:", error);
+        displayKeywords("popularKeywords", []);
+        displayKeywords("recentKeywords", []);
     }
-
-    if (r.ok) {
-      const recentData = await r.json();
-      console.group("📝 초기 로딩 - 최근 검색어 Redis");
-      console.log(`Key: ${recentData.redisKey}`);
-      console.log("Value:", recentData.redisValue);
-      console.groupEnd();
-      displayKeywords("recentKeywords", Array.isArray(recentData.keywords) ? recentData.keywords : []);
-    }
-  } catch {
-    displayKeywords("popularKeywords", []);
-    displayKeywords("recentKeywords", []);
-  }
 }
+
 
 function displayKeywords(id, list) {
   const el = document.getElementById(id);
