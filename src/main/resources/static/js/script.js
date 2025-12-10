@@ -161,13 +161,21 @@ function pickValue(x) {
   return String(x.value ?? x.member ?? x.element ?? x);
 }
 
+// -----------------------------------------------------------------------
+// [개선점] [진수님]
+// 1. Optional Chaining (?.) 사용으로 null 안전성 확보
+// 2. 삼항 연산자로 로직을 3줄로 단축
+// 3. 호출부에서 변수에 담아 1번만 호출하도록 최적화
+
 function pickScore(x) {
-  if (x == null) return "";
-  if (typeof x.score === "number" || typeof x.score === "string")
-    return x.score;
-  return "";
+    const s = x?.score; // x가 없어도 에러 안 남
+    return (typeof s === "number" || typeof s === "string") ? s : null;
 }
 
+// 호출부 최적화
+// const score = pickScore(it); <-- 1번만 호출
+// ${score !== null ? score : ""}
+// -----------------------------------------------------------------------
 async function generateTestData(btn) {
   const done = setLoading(btn, "데이터 생성 중...");
   try {
@@ -297,7 +305,7 @@ async function showRedisKeys() {
     const data = await r.json();
 
     console.group("Redis Keys 상세 정보");
-    console.log("모든 Redis Keys:", data.keys);
+    console.table(data.keys); // 표 형태로 깔끔하게 출력 [진수님]
     console.groupEnd();
 
     showMessage("Redis Keys 정보가 F12 Console에 출력되었습니다!", "info");
