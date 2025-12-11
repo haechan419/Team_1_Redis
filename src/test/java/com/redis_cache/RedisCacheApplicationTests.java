@@ -101,6 +101,8 @@ class RedisCacheApplicationTests {
 	void MariaDB_연동_테스트() {
 		System.out.println("MariaDB 연동 테스트 시작");
 
+
+
 		String testKeyword = "MariaDB테스트";
 
 		// 검색 처리
@@ -121,7 +123,7 @@ class RedisCacheApplicationTests {
 
 	private void clearAllData() {
 		System.out.println("테스트 데이터 초기화");
-		searchService.clearAllCache();
+		searchService.clearAllCacheFast();
 	}
 
 	private void validateTestData(String[] popularKeywords, String[] recentKeywords) {

@@ -19,4 +19,7 @@ public interface SearchKeywordRepository extends JpaRepository<SearchKeyword, Lo
     List<SearchKeyword> findTop10ByOrderBySearchCountDesc();
 
     List<SearchKeyword> findTop10ByOrderByLastSearchedAtDesc();
+
+    // [추가됨] 서버 시작 시 캐시 워밍(Cache Warming)을 위해 상위 100개 조회
+    List<SearchKeyword> findTop100ByOrderBySearchCountDesc();
 }

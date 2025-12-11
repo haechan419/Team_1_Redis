@@ -1,3 +1,48 @@
+// 1. UI 요소 ID 관리 (매직 스트링 제거)
+const UI_ID = {
+    INPUT: "searchInput",
+    MESSAGE_AREA: "messageArea",
+    RECENT_LIST: "recentKeywords",
+    POPULAR_LIST: "popularKeywords",
+    COMPARE_BOX: "performanceComparison"
+};
+
+// 2. DOM 요소 저장소 및 타이머 변수
+const UI = {};
+let messageTimer = null; // [유진님 수정 반영] 메시지 타이머 충돌 방지
+
+// 3. 페이지 로드 시 DOM 요소 캐싱 (한 번만 실행됨)
+document.addEventListener("DOMContentLoaded", () => {
+    UI.input = document.getElementById(UI_ID.INPUT);
+    UI.messageArea = document.getElementById(UI_ID.MESSAGE_AREA);
+    UI.recentList = document.getElementById(UI_ID.RECENT_LIST);
+    UI.popularList = document.getElementById(UI_ID.POPULAR_LIST);
+    UI.compareBox = document.getElementById(UI_ID.COMPARE_BOX);
+
+    // 팀원들의 초기화 함수가 있다면 실행 보장
+    if (typeof loadKeywords === "function") loadKeywords();
+
+    // 엔터키 이벤트 바인딩 (UI 객체 사용)
+    if (UI.input) {
+        UI.input.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") search(null);
+        });
+    }
+});
+
+// 4. [로직 최적화] 데이터 파싱 함수 교체 (기존 pickValue, pickScore 지우고 이걸로 교체)
+function pickValue(x) {
+    if (x == null) return "";
+    if (typeof x === "string") return x;
+    return String(x.value ?? x.member ?? x.element ?? x);
+}
+
+function pickScore(x) {
+    const s = x?.score; // Optional Chaining 사용
+    return (typeof s === "number" || typeof s === "string") ? s : null;
+}
+
+
 function showMessage(text, type = "info") {
   const area = document.getElementById("messageArea");
   area.innerHTML = `<div class="message ${type}">${text}</div>`;
@@ -140,10 +185,12 @@ function displayKeywords(id, list) {
     .join("");
 }
 
-document.getElementById("searchInput").addEventListener("keypress", (e) => {
-  if (e.key === "Enter") search(null);
+document.getElementById("searchInput").addEventListener("keydown", (e) => { // keypress -> keydown 권장
+  if (e.key === "Enter") {
+    e.preventDefault(); // [핵심] 브라우저가 버튼을 자동으로 누르는 동작을 막음
+    search(null);
+  }
 });
-
 function pickValue(x) {
   if (x == null) return "";
   if (typeof x === "string") return x;
@@ -172,6 +219,24 @@ async function generateTestData(btn) {
     showMessage("테스트 데이터가 성공적으로 생성되었습니다!", "success");
   } catch {
     showMessage("테스트 데이터 생성 중 오류가 발생했습니다.", "error");
+  } finally {
+    done();
+  }
+}
+//테스트 추가사항-===============================================================
+async function generateBulkData(btn) {
+  const done = setLoading(btn, "1만 개 생성 중...");
+  try {
+    const r = await fetchWithTimeout("/api/test/generate-bulk", {
+      method: "POST",
+    });
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+
+    await loadKeywords();
+    showMessage(`성공! ${data.timeTaken} 소요됨. 비교 버튼을 눌러보세요.`, "success");
+  } catch {
+    showMessage("대량 데이터 생성 중 오류 발생", "error");
   } finally {
     done();
   }
@@ -313,6 +378,7 @@ window.showRedisKeys = showRedisKeys;
 Object.assign(window, {
   search,
   generateTestData,
+  generateBulkData, // <--- 테스트 데이터생성 임시 작성
   clearCache,
   checkRedisStatus,
   compareRedisVsDB,

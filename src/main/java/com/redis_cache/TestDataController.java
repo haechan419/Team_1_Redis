@@ -14,6 +14,7 @@ public class TestDataController {
     @Autowired
     private SearchService searchService;
 
+    // [기존] 소량 테스트 데이터 생성
     @PostMapping("/generate-data")
     @GetMapping("/generate-data")
     public ResponseEntity<Map<String, Object>> generateTestData() {
@@ -37,6 +38,23 @@ public class TestDataController {
                 "message", "테스트 데이터가 생성되었습니다",
                 "popular", snap.getOrDefault("popular", java.util.List.of()),
                 "recent", snap.getOrDefault("recent", java.util.List.of())
+        ));
+    }
+
+    // [신규 추가] 대량(1만 건) 데이터 생성 API
+    // 우리가 추가했던 부분입니다.
+    @PostMapping("/generate-bulk")
+    public ResponseEntity<Map<String, Object>> generateBulkData() {
+        long start = System.currentTimeMillis();
+
+        // 10,000건 생성 요청 (Service에 추가한 메서드 호출)
+        searchService.generateBulkData(10000);
+
+        long end = System.currentTimeMillis();
+
+        return ResponseEntity.ok(Map.of(
+                "message", "10,000건의 더미 데이터가 생성되었습니다!",
+                "timeTaken", (end - start) + "ms"
         ));
     }
 

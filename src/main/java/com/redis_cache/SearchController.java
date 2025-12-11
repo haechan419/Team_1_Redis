@@ -1,19 +1,17 @@
 package com.redis_cache;
 
-import com.redis_cache.SearchService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/search")
+@RequiredArgsConstructor
 public class SearchController {
 
-    @Autowired
-    private SearchService searchService;
+    private final SearchService searchService;
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> search(@RequestBody Map<String, String> request) {
@@ -26,11 +24,11 @@ public class SearchController {
 
         searchService.processSearch(keyword.trim());
 
-        // Redis 상태를 함께 반환
+        // 검색 완료 후 현재 Redis 상태 조회
         Map<String, Object> redisStatus = searchService.getRedisStatus();
 
         return ResponseEntity.ok(Map.of(
-                "message", "검색이 완료되었습니다",
+                "message", "검색이 완료되었습니다 (Redis Fast Write)",
                 "keyword", keyword,
                 "redisKeys", Map.of(
                         "popular_keywords", redisStatus.get("popularKeywords"),
@@ -41,11 +39,9 @@ public class SearchController {
 
     @GetMapping("/popular")
     public ResponseEntity<Map<String, Object>> getPopularKeywords() {
-        List<String> popularKeywords = searchService.getPopularKeywords(10);
         Map<String, Object> redisStatus = searchService.getRedisStatus();
-
         return ResponseEntity.ok(Map.of(
-                "keywords", popularKeywords,
+                "keywords", searchService.getPopularKeywords(10),
                 "redisKey", "popular_keywords",
                 "redisValue", redisStatus.get("popularKeywords"),
                 "totalCount", redisStatus.get("totalPopularCount")
@@ -54,11 +50,9 @@ public class SearchController {
 
     @GetMapping("/recent")
     public ResponseEntity<Map<String, Object>> getRecentKeywords() {
-        List<String> recentKeywords = searchService.getRecentKeywords(10);
         Map<String, Object> redisStatus = searchService.getRedisStatus();
-
         return ResponseEntity.ok(Map.of(
-                "keywords", recentKeywords,
+                "keywords", searchService.getRecentKeywords(10),
                 "redisKey", "recent_keywords",
                 "redisValue", redisStatus.get("recentKeywords"),
                 "totalCount", redisStatus.get("totalRecentCount")
@@ -68,27 +62,40 @@ public class SearchController {
     @GetMapping("/debug/redis-status")
     public ResponseEntity<Map<String, Object>> getRedisStatus() {
         Map<String, Object> status = searchService.getRedisStatus();
-
-        // Key:Value 구조를 명확히 표시
         return ResponseEntity.ok(Map.of(
                 "redisData", Map.of(
                         "popular_keywords", Map.of(
                                 "type", "SortedSet",
-                                "key", "popular_keywords",
                                 "value", status.get("popularKeywords"),
                                 "count", status.get("totalPopularCount")
                         ),
                         "recent_keywords", Map.of(
                                 "type", "List",
-                                "key", "recent_keywords",
                                 "value", status.get("recentKeywords"),
                                 "count", status.get("totalRecentCount")
                         )
                 ),
-                "totalPopularCount", status.get("totalPopularCount"),
-                "totalRecentCount", status.get("totalRecentCount"),
                 "popularKeywords", status.get("popularKeywords"),
-                "recentKeywords", status.get("recentKeywords")
+                "recentKeywords", status.get("recentKeywords"),
+                "totalPopularCount", status.get("totalPopularCount"),
+                "totalRecentCount", status.get("totalRecentCount")
+        ));
+    }
+
+    @GetMapping("/debug/redis-keys")
+    public ResponseEntity<Map<String, Object>> getAllRedisKeys() {
+        Map<String, Object> status = searchService.getRedisStatus();
+        return ResponseEntity.ok(Map.of(
+                "keys", Map.of(
+                        "popular_keywords", Map.of(
+                                "dataType", "SortedSet (ZSET)",
+                                "currentValue", status.get("popularKeywords")
+                        ),
+                        "recent_keywords", Map.of(
+                                "dataType", "List",
+                                "currentValue", status.get("recentKeywords")
+                        )
+                )
         ));
     }
 
@@ -97,7 +104,6 @@ public class SearchController {
         Map<String, Object> comparison = searchService.compareRedisVsDB();
         Map<String, Object> redisStatus = searchService.getRedisStatus();
 
-        // Redis Key:Value 정보를 포함한 성능 비교
         return ResponseEntity.ok(Map.of(
                 "redisResult", comparison.get("redisResult"),
                 "dbResult", comparison.get("dbResult"),
@@ -107,29 +113,6 @@ public class SearchController {
                 "redisKeyValueData", Map.of(
                         "popular_keywords", redisStatus.get("popularKeywords"),
                         "recent_keywords", redisStatus.get("recentKeywords")
-                )
-        ));
-    }
-
-    // 새로 추가: Redis 모든 키 조회
-    @GetMapping("/debug/redis-keys")
-    public ResponseEntity<Map<String, Object>> getAllRedisKeys() {
-        Map<String, Object> status = searchService.getRedisStatus();
-
-        return ResponseEntity.ok(Map.of(
-                "keys", Map.of(
-                        "popular_keywords", Map.of(
-                                "dataType", "SortedSet (ZSET)",
-                                "description", "검색어를 점수(검색횟수)와 함께 저장",
-                                "operations", List.of("ZINCRBY", "ZREVRANGE", "ZCARD"),
-                                "currentValue", status.get("popularKeywords")
-                        ),
-                        "recent_keywords", Map.of(
-                                "dataType", "List",
-                                "description", "최근 검색어를 순서대로 저장 (최대 10개)",
-                                "operations", List.of("LPUSH", "LRANGE", "LTRIM"),
-                                "currentValue", status.get("recentKeywords")
-                        )
                 )
         ));
     }
