@@ -75,53 +75,61 @@ function addUserSearchKeyword(keyword) {
   if (items.length > 15) items[items.length - 1].remove();
 }
 
-async function updatePopularKeywords() {
-  try {
-    const r = await fetchWithTimeout("/api/search/popular");
-    if (r.ok) {
-      const data = await r.json();
-
-      // Redis Key:Value 정보를 콘솔에 출력
-      console.group("📊 인기 검색어 Redis 데이터");
-      console.log(`Key: ${data.redisKey}`);
-      console.log("Value:", data.redisValue);
-      console.log("총 개수:", data.totalCount);
-      console.groupEnd();
-
-      displayKeywords("popularKeywords", Array.isArray(data.keywords) ? data.keywords : []);
+function logRedisData(title, data) {
+    console.group(title);
+    console.log(`Key: ${data.redisKey}`);
+    console.log("Value:", data.redisValue);
+    if (data.totalCount !== undefined) {
+        console.log("총 개수:", data.totalCount);
     }
-  } catch {}
+    console.groupEnd();
 }
+
+async function fetchAndDisplayPopular(logTitle = "📊 인기 검색어") {
+    const response = await fetchWithTimeout("/api/search/popular");
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    logRedisData(logTitle, data); // 반복적인 console.log 부분을 여기서 호출
+    displayKeywords("popularKeywords", Array.isArray(data.keywords) ? data.keywords : []);
+    return true;
+}
+
+async function fetchAndDisplayRecent(logTitle = "📝 최근 검색어") {
+    const response = await fetchWithTimeout("/api/search/recent");
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    logRedisData(logTitle, data); // 반복적인 console.log 부분을 여기서 호출
+    displayKeywords("recentKeywords", Array.isArray(data.keywords) ? data.keywords : []);
+    return true;
+}
+
+
+
+async function updatePopularKeywords() {
+    try {
+        await fetchAndDisplayPopular("📊 인기 검색어 Redis 데이터");
+        // 반복적인 console.log 부분 빼기
+    } catch (error) {
+        console.error("인기 검색어 업데이트 실패:", error); // 비어있던 catch 문 채워넣기
+    }
+}
+
 
 async function loadKeywords() {
-  try {
-    const [p, r] = await Promise.all([
-      fetchWithTimeout("/api/search/popular"),
-      fetchWithTimeout("/api/search/recent"),
-    ]);
-
-    if (p.ok) {
-      const popularData = await p.json();
-      console.group("🔥 초기 로딩 - 인기 검색어 Redis");
-      console.log(`Key: ${popularData.redisKey}`);
-      console.log("Value:", popularData.redisValue);
-      console.groupEnd();
-      displayKeywords("popularKeywords", Array.isArray(popularData.keywords) ? popularData.keywords : []);
+    try {
+        await Promise.all([
+            fetchAndDisplayPopular("🔥 초기 로딩 - 인기 검색어"), // 인기검색어 (함수호출)
+            fetchAndDisplayRecent("📝 초기 로딩 - 최근 검색어") // 최근 검색어(함수호출)
+        ]);
+    } catch (error) {
+        console.error("키워드 로딩 실패:", error);
+        displayKeywords("popularKeywords", []);
+        displayKeywords("recentKeywords", []);
     }
-
-    if (r.ok) {
-      const recentData = await r.json();
-      console.group("📝 초기 로딩 - 최근 검색어 Redis");
-      console.log(`Key: ${recentData.redisKey}`);
-      console.log("Value:", recentData.redisValue);
-      console.groupEnd();
-      displayKeywords("recentKeywords", Array.isArray(recentData.keywords) ? recentData.keywords : []);
-    }
-  } catch {
-    displayKeywords("popularKeywords", []);
-    displayKeywords("recentKeywords", []);
-  }
 }
+
 
 function displayKeywords(id, list) {
   const el = document.getElementById(id);
@@ -153,12 +161,21 @@ function pickValue(x) {
   return String(x.value ?? x.member ?? x.element ?? x);
 }
 
+// -----------------------------------------------------------------------
+// [개선점] [진수님]
+// 1. Optional Chaining (?.) 사용으로 null 안전성 확보
+// 2. 삼항 연산자로 로직을 3줄로 단축
+// 3. 호출부에서 변수에 담아 1번만 호출하도록 최적화
+
 function pickScore(x) {
-  if (x == null) return "";
-  if (typeof x.score === "number" || typeof x.score === "string")
-    return x.score;
-  return "";
+    const s = x?.score; // x가 없어도 에러 안 남
+    return (typeof s === "number" || typeof s === "string") ? s : null;
 }
+
+// 호출부 최적화
+// const score = pickScore(it); <-- 1번만 호출
+// ${score !== null ? score : ""}
+// -----------------------------------------------------------------------
 
 async function generateTestData(btn) {
   const done = setLoading(btn, "데이터 생성 중...");
@@ -289,7 +306,7 @@ async function showRedisKeys() {
     const data = await r.json();
 
     console.group("Redis Keys 상세 정보");
-    console.log("모든 Redis Keys:", data.keys);
+    console.table(data.keys); // 표 형태로 깔끔하게 출력 [진수님]
     console.groupEnd();
 
     showMessage("Redis Keys 정보가 F12 Console에 출력되었습니다!", "info");
@@ -300,10 +317,10 @@ async function showRedisKeys() {
 
 // 전역 함수로 등록 (콘솔에서 직접 호출 가능)
 window.showRedisKeys = showRedisKeys;
-
 (async function init() {
   await loadKeywords();
-  setInterval(updatePopularKeywords, 3000);
+  // --------------------------------- 유진님 수정 -----------------------------------------//
+   //setInterval(updatePopularKeywords, 3000);   유진님 삭제
 
   // 초기 로딩 시 Redis 정보 안내
   console.log("실시간 검색어 시스템 시작!");
