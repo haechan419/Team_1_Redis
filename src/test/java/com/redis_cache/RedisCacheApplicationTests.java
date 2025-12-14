@@ -121,7 +121,7 @@ class RedisCacheApplicationTests {
 
 	private void clearAllData() {
 		System.out.println("테스트 데이터 초기화");
-		searchService.clearAllCache();
+		searchService.clearAllCacheFast();
 	}
 
 	private void validateTestData(String[] popularKeywords, String[] recentKeywords) {
