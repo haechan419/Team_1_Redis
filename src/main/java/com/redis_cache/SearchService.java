@@ -28,10 +28,9 @@ public class SearchService {
     private static final String POPULAR_KEYWORDS_KEY = "popular_keywords";
     private static final String RECENT_KEYWORDS_KEY = "recent_keywords";
 
-    @CacheEvict(cacheNames = "search", allEntries = true)
     public void processSearch(String keyword) {
         saveOrUpdateSearchKeyword(keyword);
-        updateRealTimeRanking(keyword);
+        updateRealTimeRanking(keyword);  // Redis는 실시간 업데이트됨
         updateRecentKeywords(keyword);
     }
 
