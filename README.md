@@ -75,14 +75,15 @@
 
 ## FlowChart
 
-![플로우차트 수정 전](.images/Redis_전.png)
+![플로우차트 수정 전](.images/RedisBefore.png)
 
-![플로우차트 수정 후](.images/Redis_수정후.png)
+![플로우차트 수정 후](.images/RedisAfter.png)
 
 ## 데이터 개선 작업
-![플로우차트](.images/100만개 데이터 추가 후 개선 전 속도.png)
 
-![플로우차트](.images/100만개 데이터 추가 후 개선 후 속도.png)
+![100dataBefore](.images/100dataBefore.png)
+
+![100dataAfter](.images/100dataAfter.png)
 
 
 ---
