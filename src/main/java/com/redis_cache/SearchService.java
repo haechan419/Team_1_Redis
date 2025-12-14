@@ -8,6 +8,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,72 +28,150 @@ public class SearchService {
 
     private static final String POPULAR_KEYWORDS_KEY = "popular_keywords";
     private static final String RECENT_KEYWORDS_KEY = "recent_keywords";
+    // 유진님 추가
+    private static final String DIRTY_KEYWORDS_KEY = "dirty:keywords";
 
+//    @CacheEvict(cacheNames = "search", allEntries = true)
+//    public void processSearch(String keyword) {
+//        saveOrUpdateSearchKeyword(keyword);
+//        updateRealTimeRanking(keyword);
+//        updateRecentKeywords(keyword);
+//    }
+
+    // 단건 검색 처리: Redis 갱신 + 더티셋
     @CacheEvict(cacheNames = "search", allEntries = true)
     public void processSearch(String keyword) {
-        saveOrUpdateSearchKeyword(keyword);
         updateRealTimeRanking(keyword);
         updateRecentKeywords(keyword);
+        markDirty(keyword);
     }
 
+    // 더티셋 적재
+    private void markDirty(String keyword) {
+        stringRedisTemplate.opsForSet().add(DIRTY_KEYWORDS_KEY, keyword);
+    }
+
+    private void markDirty(Collection<String> keywords) {
+        if (keywords == null || keywords.isEmpty()) return;
+        stringRedisTemplate.opsForSet().add(DIRTY_KEYWORDS_KEY, keywords.toArray(new String[0]));
+    }
+
+//    @Transactional
+//    @CacheEvict(cacheNames = "search", allEntries = true)
+//    public void processSearchBulk(Map<String, Long> increments, List<String> recent) {
+//        LocalDateTime now = LocalDateTime.now();
+//
+//        List<SearchKeyword> existList = searchKeywordRepository.findAllByKeywordIn(increments.keySet());
+//        Map<String, SearchKeyword> existMap = existList.stream()
+//                .collect(Collectors.toMap(SearchKeyword::getKeyword, k -> k));
+//
+//        List<SearchKeyword> toSave = new ArrayList<>();
+//        for (Map.Entry<String, Long> e : increments.entrySet()) {
+//            String kw = e.getKey();
+//            long delta = e.getValue();
+//            SearchKeyword sk = existMap.get(kw);
+//            if (sk == null) {
+//                sk = SearchKeyword.builder()
+//                        .keyword(kw)
+//                        .searchCount(delta)
+//                        .firstSearchedAt(now)
+//                        .lastSearchedAt(now)
+//                        .build();
+//            } else {
+//                sk.setSearchCount(sk.getSearchCount() + delta);
+//                sk.setLastSearchedAt(now);
+//                if (sk.getFirstSearchedAt() == null) sk.setFirstSearchedAt(now);
+//            }
+//            toSave.add(sk);
+//        }
+//        if (!toSave.isEmpty()) {
+//            searchKeywordRepository.saveAll(toSave);
+//        }
+//
+//        stringRedisTemplate.executePipelined((RedisConnection conn) -> {
+//            var ser = stringRedisTemplate.getStringSerializer();
+//            byte[] zkey = ser.serialize(POPULAR_KEYWORDS_KEY);
+//            byte[] lkey = ser.serialize(RECENT_KEYWORDS_KEY);
+//
+//            for (Map.Entry<String, Long> e : increments.entrySet()) {
+//                conn.zIncrBy(zkey, e.getValue(), ser.serialize(e.getKey()));
+//            }
+//            if (recent != null && !recent.isEmpty()) {
+//                for (String kw : recent) {
+//                    conn.lRem(lkey, 0, ser.serialize(kw));
+//                    conn.lPush(lkey, ser.serialize(kw));
+//                }
+//                conn.lTrim(lkey, 0, 9);
+//            }
+//            return null;
+//        });
+//    }
+
+    // 배치 검색 처리: Redis만 갱신 + 더티셋
     @Transactional
     @CacheEvict(cacheNames = "search", allEntries = true)
     public void processSearchBulk(Map<String, Long> increments, List<String> recent) {
-        LocalDateTime now = LocalDateTime.now();
-
-        List<SearchKeyword> existList = searchKeywordRepository.findAllByKeywordIn(increments.keySet());
-        Map<String, SearchKeyword> existMap = existList.stream()
-                .collect(Collectors.toMap(SearchKeyword::getKeyword, k -> k));
-
-        List<SearchKeyword> toSave = new ArrayList<>();
-        for (Map.Entry<String, Long> e : increments.entrySet()) {
-            String kw = e.getKey();
-            long delta = e.getValue();
-            SearchKeyword sk = existMap.get(kw);
-            if (sk == null) {
-                sk = SearchKeyword.builder()
-                        .keyword(kw)
-                        .searchCount(delta)
-                        .firstSearchedAt(now)
-                        .lastSearchedAt(now)
-                        .build();
-            } else {
-                sk.setSearchCount(sk.getSearchCount() + delta);
-                sk.setLastSearchedAt(now);
-                if (sk.getFirstSearchedAt() == null) sk.setFirstSearchedAt(now);
-            }
-            toSave.add(sk);
-        }
-        if (!toSave.isEmpty()) {
-            searchKeywordRepository.saveAll(toSave);
-        }
-
-        stringRedisTemplate.executePipelined((RedisConnection conn) -> {
-            var ser = stringRedisTemplate.getStringSerializer();
-            byte[] zkey = ser.serialize(POPULAR_KEYWORDS_KEY);
-            byte[] lkey = ser.serialize(RECENT_KEYWORDS_KEY);
-
-            for (Map.Entry<String, Long> e : increments.entrySet()) {
-                conn.zIncrBy(zkey, e.getValue(), ser.serialize(e.getKey()));
-            }
-            if (recent != null && !recent.isEmpty()) {
-                for (String kw : recent) {
-                    conn.lRem(lkey, 0, ser.serialize(kw));
-                    conn.lPush(lkey, ser.serialize(kw));
-                }
-                conn.lTrim(lkey, 0, 9);
-            }
-            return null;
-        });
+        updateRedisBulkOnly(increments, recent);
+        markDirty(increments.keySet());
     }
 
+    //    public Map<String, List<String>> fastGenerateAndSnapshot(Map<String, Long> increments, List<String> recent, int limit) {
+//        updateRedisBulkOnly(increments, recent);
+//        CompletableFuture.runAsync(() -> upsertDbBulk(increments));
+//        Map<String, List<String>> snap = new HashMap<>();
+//        snap.put("popular", getPopularKeywordsRaw(limit));
+//        snap.put("recent", getRecentKeywordsRaw(limit));
+//        return snap;
+//    }
+// 테스트 데이터 생성 시에도 더티셋 기록
     public Map<String, List<String>> fastGenerateAndSnapshot(Map<String, Long> increments, List<String> recent, int limit) {
         updateRedisBulkOnly(increments, recent);
-        CompletableFuture.runAsync(() -> upsertDbBulk(increments));
+        markDirty(increments.keySet());
         Map<String, List<String>> snap = new HashMap<>();
         snap.put("popular", getPopularKeywordsRaw(limit));
         snap.put("recent", getRecentKeywordsRaw(limit));
         return snap;
+    }
+
+    // 스케줄러: Redis 점수 → DB 저장 → 처리된 키 제거
+    @Scheduled(fixedDelayString = "${app.sync.delay-ms:60000}")
+    public void syncDirtyKeywordsToDb() {
+        Set<String> dirtyKeywords = stringRedisTemplate.opsForSet().members(DIRTY_KEYWORDS_KEY);
+        if (dirtyKeywords == null || dirtyKeywords.isEmpty()) return;
+
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            List<SearchKeyword> existing = searchKeywordRepository.findAllByKeywordIn(dirtyKeywords);
+            Map<String, SearchKeyword> existMap = existing.stream()
+                    .collect(Collectors.toMap(SearchKeyword::getKeyword, k -> k));
+
+            List<SearchKeyword> toSave = new ArrayList<>();
+            for (String kw : dirtyKeywords) {
+                Double score = stringRedisTemplate.opsForZSet().score(POPULAR_KEYWORDS_KEY, kw);
+                long count = score != null ? score.longValue() : 0L;
+                SearchKeyword sk = existMap.get(kw);
+                if (sk == null) {
+                    sk = SearchKeyword.builder()
+                            .keyword(kw)
+                            .searchCount(count)
+                            .firstSearchedAt(now)
+                            .lastSearchedAt(now)
+                            .build();
+                } else {
+                    sk.setSearchCount(count);
+                    sk.setLastSearchedAt(now);
+                    if (sk.getFirstSearchedAt() == null) sk.setFirstSearchedAt(now);
+                }
+                toSave.add(sk);
+            }
+
+            if (!toSave.isEmpty()) {
+                searchKeywordRepository.saveAll(toSave);
+            }
+            stringRedisTemplate.opsForSet().remove(DIRTY_KEYWORDS_KEY, (Object[]) dirtyKeywords.toArray(new String[0]));
+        } catch (RuntimeException ex) {
+            log.warn("Failed to sync dirty keywords to DB", ex);
+        }
     }
 
     private void upsertDbBulk(Map<String, Long> increments) {
