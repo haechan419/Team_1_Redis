@@ -86,9 +86,16 @@
 
 ## FlowChart
 
-![플로우차트 수정 전](./images/RedisBofore.png)
+### 플로우 차트 수정 후
 
 ![플로우차트 수정 후](./images/RedisAfter.png)
+
+
+### 플로우 차트 수정 전
+
+![플로우차트 수정 전](./images/RedisBofore.png)
+
+
 
 ## 데이터 개선 작업
 
